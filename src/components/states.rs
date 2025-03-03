@@ -19,3 +19,8 @@ pub enum Block {
     Chat,
     Typing,
 }
+
+pub enum Modes {
+    Normal,
+    Insert,
+}
