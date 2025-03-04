@@ -4,12 +4,9 @@ pub enum Screen {
     RoomForm,
 }
 
-pub enum UserForm {
+pub enum Forms {
     SignUp,
     SignIn,
-}
-
-pub enum RoomForm {
     RoomCreator,
     RoomEdit,
 }

@@ -1,7 +1,8 @@
 use crate::tui::core::draw_ui;
 use super::{
-    logics,
-    states::{Block, Screen, Modes}
+    forms::Form, logics, states::{
+        Block, Forms, Modes, Screen
+    }
 };
 
 use ratatui::{
@@ -16,6 +17,7 @@ use std::{char, io::Result};
 
 pub struct App {
     pub exit:             bool,
+    pub form:             Form,
     pub selected_block:   Block,
     pub selected_screen:  Screen,
     pub mode:             Modes,
@@ -26,6 +28,7 @@ pub struct App {
     pub line_index:       usize,
 
     pub messages:         Vec<String>,
+    pub is_user_msg:      bool,
     pub chat_scroll_state:ScrollbarState,
     pub chat_scroll_index:usize,
 }
@@ -33,31 +36,60 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         dotenv().ok();
-        let token = match std::env::var("TOKEN") {
-            Ok(value) => value,
-            Err(e) => {
-                eprintln!("ERROR: {:?}", e);
-                e.to_string()
+        let screen:  Screen; // This kind of approach is needed for future token conditions
+        let formm: Form; // If you know, you know
+        match std::env::var("TOKEN") {
+            Ok(_value) => {
+                screen = Screen::Main;
+                formm = Form::new(None, None);
+            },
+            Err(_error) => {
+                screen = Screen::UserForm;
+                let form_kind = Forms::SignUp; // TODO: We should check if the user already exist or what
+                let n_inputs = match form_kind {
+                    // Create a form with different number of inputs with
+                    // respect to UserForm kind
+                    Forms::SignUp => Some(4),
+                    _             => Some(2), // We never hit rooms form here so its ok
+                };
+                formm = Form::new(Some(form_kind), n_inputs);
             }
-        };
-
-        let sc = match token.contains("ERROR") {
-            true => Screen::UserForm,
-            false => Screen::Main
         };
 
         Self {
             exit:             false,
+            form:             formm,
             selected_block:   Block::Rooms,
-            selected_screen:  sc,
+            selected_screen:  screen,
             mode:             Modes::Normal,
             all_input:        vec!["".to_string()],
             char_index:       0,
             line_index:       0,
             messages:         Vec::new(),
+            is_user_msg:      true,
             chat_scroll_state:ScrollbarState::new(0),
             chat_scroll_index:0,
         }
+    }
+
+    pub fn form_field_hover(&mut self, go_next: bool) {
+        let mut selected = self.form.selected_input;
+        let last = self.form.inputs.len() - 1;
+        if go_next {
+            if selected != last {
+                selected = selected.saturating_add(1);
+            } else {
+                selected = 0;
+            }
+        } else {
+            if selected != 0 {
+                selected = selected.saturating_sub(1);
+            } else {
+                selected = last;
+            }
+        }
+
+        self.form.selected_input = selected;
     }
 
     pub fn move_cursor_left(&mut self) {
@@ -134,18 +166,6 @@ impl App {
         }
     }
 
-    pub fn submit_message(&mut self) {
-        if self.all_input[self.line_index].ends_with('\\') {
-            self.new_line();
-        } else {
-            let msg = self.all_input.join(" ").replace("\\", "");
-            self.messages.push(format!("User1: {}", msg));
-            self.all_input = vec!["".to_string()];
-            self.reset_cursor();
-            self.reset_line();
-        }
-    }
-
     // Removes one word behind
     pub fn delete_word(&mut self) {
         let is_not_cursor_leftmost = self.char_index != 0;
@@ -194,6 +214,22 @@ impl App {
             .unwrap_or(0);
 
         self.char_index = new_cursor_pos
+    }
+
+    pub fn submit_message(&mut self) {
+        if self.all_input[self.line_index].ends_with('\\') {
+            self.new_line();
+        } else {
+            self.messages.push("User1:".to_string());
+            for (i, _) in self.all_input.clone().iter().enumerate() {
+                self.all_input[i] = self.all_input[i].replace("\\", "");
+                self.messages.push(self.all_input[i].to_string())
+            }
+            self.messages.push("".to_string());
+            self.all_input = vec!["".to_string()];
+            self.reset_cursor();
+            self.reset_line();
+        }
     }
 }
 
