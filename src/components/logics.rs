@@ -37,7 +37,10 @@ pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
                         },
 
                         KeyCode::Enter => match app.selected_block {
-                            Block::Typing     => {app.mode = Modes::Insert},
+                            Block::Typing => {
+                                app.mode = Modes::Insert;
+                                app.set_curser();
+                            },
                             _ => {}
                         }
 
@@ -57,6 +60,7 @@ pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
 
                     KeyCode::Enter => {
                         app.mode = Modes::Insert;
+                        app.set_curser();
                     }
 
                     _ => {}

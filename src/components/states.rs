@@ -9,6 +9,7 @@ pub enum Forms {
     SignIn,
     RoomCreator,
     RoomEdit,
+    Typing,
 }
 
 pub enum Block {

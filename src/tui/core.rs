@@ -24,6 +24,10 @@ const TYPING_BG:    Color = Color::Rgb(203, 3, 8);
 const USER_FORM:    Color = Color::Rgb(247, 155, 35);
 
 pub fn draw_ui(f: &mut Frame, app: &App) {
+    // Will need them at following
+    let inputs = &app.form.inputs;
+    let selected_input = app.form.selected_input;
+
     match app.selected_screen {
         states::Screen::Main => {
 
@@ -98,16 +102,17 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                     }
                 ));
 
+            let main_txt = inputs[selected_input].borrow();
             // What to show on typing box
             let showing_text = match app.mode {
                 states::Modes::Normal => {
-                    match app.all_input[app.line_index].as_str() {
+                    match main_txt[app.line_index].as_str() {
                         // Keep the draft message
                         "" => {vec![Line::from("Type here ...").style(Style::new().dark_gray())]}
-                        _ => {vec![Line::from(app.all_input[app.line_index].as_str()).style(Style::new().fg(CHAT_FG))]}
+                        _ => {vec![Line::from(main_txt[app.line_index].as_str()).style(Style::new().fg(CHAT_FG))]}
                     }
                 },
-                states::Modes::Insert => vec![Line::from(app.all_input[app.line_index].as_str()).style(CHAT_FG)]
+                states::Modes::Insert => vec![Line::from(main_txt[app.line_index].as_str()).style(CHAT_FG)]
             };
             let typing_para = Paragraph::new(
                     showing_text
@@ -154,7 +159,7 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                 .border_style(USER_FORM)
                 .title(Line::from(
                     match app.form.kind {
-                        Some(states::Forms::SignUp) => "Sign Up Form",
+                        states::Forms::SignUp => "Sign Up Form",
                         _                     => "Sign In Form",
                     }
                 ).centered());
@@ -171,12 +176,12 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
 
             // To draw inner layout ------------
             let titles: Vec<String> = match app.form.kind {
-                Some(states::Forms::SignUp) => vec![format!("Username:"),
-                                                    format!(""), format!("Password:"),
-                                                    format!(""), format!("Question:"),
-                                                    format!(""), format!("Answer:")],
-                _                           => vec![format!("Username:"), format!(""),
-                                                    format!("Password:")],
+                states::Forms::SignUp => vec![format!("Username:"),
+                                                format!(""), format!("Password:"),
+                                                format!(""), format!("Question:"),
+                                                format!(""), format!("Answer:")],
+                _                     => vec![format!("Username:"), format!(""),
+                                                format!("Password:")],
             };
 
             let rows: Vec<Constraint> = vec![Constraint::Percentage(100 / titles.len() as u16); titles.len()];
@@ -206,6 +211,12 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                         .borders(border)
                         .border_type(BorderType::Rounded);
 
+                    let main_txt = inputs[i/2].borrow();
+                    let input_para = Paragraph::new(
+                        vec![Line::from(main_txt[app.line_index].as_str()).style(Style::new().fg(CHAT_FG))]
+                    )
+                    .block(input_blk.clone());
+
                     let title_line = Paragraph::new(
                         vec![
                             Line::from(Span::from("")), // To align title vertically
@@ -215,7 +226,7 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                     .block(input_blk.clone().borders(Borders::NONE));
 
                     f.render_widget(title_line, rows.clone().split(cols[0])[i]);
-                    f.render_widget(input_blk, rows.clone().split(cols[1])[i]);
+                    f.render_widget(input_para, rows.clone().split(cols[1])[i]);
                 }
             }
             // ---------------------------------
