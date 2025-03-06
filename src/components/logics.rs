@@ -1,8 +1,8 @@
-use super::states::{Block, Modes, Screen};
+use super::states::{Block, Modes, Screen, Forms};
 use super::app::App;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use std::io;
+use std::{io, usize};
 
 
 pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
@@ -48,7 +48,7 @@ pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
                     }
                 },
 
-                Screen::UserForm => match e.code {
+                Screen::Form => match e.code {
 
                     KeyCode::Up => {
                         app.form_field_hover(false);
@@ -59,8 +59,21 @@ pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
                     },
 
                     KeyCode::Enter => {
-                        app.mode = Modes::Insert;
-                        app.set_curser();
+                        match app.form.kind {
+                            Forms::RoomCreator | Forms::RoomEdit => {
+                                let is_last = app.form.selected_input == app.form.inputs.len() - 1;
+                                if is_last {
+                                    app.form.switch_pub();
+                                } else {
+                                    app.mode = Modes::Insert;
+                                    app.set_curser();
+                                }
+                            },
+                            _ => {
+                                app.mode = Modes::Insert;
+                                app.set_curser();
+                            },
+                        }
                     }
 
                     _ => {}

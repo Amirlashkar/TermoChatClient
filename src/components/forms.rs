@@ -11,6 +11,7 @@ pub struct Form {
     pub kind:           Forms,
     pub inputs:         Vec<Rc<RefCell<Vec<String>>>>,
     pub selected_input: usize,
+    pub is_public:      bool,
 }
 
 impl Form {
@@ -30,6 +31,12 @@ impl Form {
             },
             inputs: inps,
             selected_input: 0,
+            is_public: true,
         }
     }
+
+    pub fn switch_pub(&mut self) {
+        self.is_public = !self.is_public;
+    }
 }
+

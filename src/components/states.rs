@@ -1,7 +1,7 @@
 pub enum Screen {
     Main,
-    UserForm,
-    RoomForm,
+    FromChoose,
+    Form,
 }
 
 pub enum Forms {

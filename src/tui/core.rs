@@ -15,18 +15,15 @@ use ratatui::{
 
 
 // Custom colors to use
-const BORDER:       Color = Color::Rgb(11, 255, 37);
-const TYPING_BORDER:Color = Color::Rgb(253, 242, 83);
-const CHAT_FG:      Color = Color::Rgb(203, 3, 8);
-const CHAT_BG:      Color = Color::Rgb(203, 3, 8);
-const TYPING_FG:    Color = Color::Rgb(203, 3, 8);
-const TYPING_BG:    Color = Color::Rgb(203, 3, 8);
-const USER_FORM:    Color = Color::Rgb(247, 155, 35);
+const BORDER:           Color = Color::Rgb(11, 255, 37);
+const TYPING_BORDER:    Color = Color::Rgb(253, 242, 83);
+const CHAT_FG:          Color = Color::Rgb(203, 3, 8);
+const FORM:             Color = Color::Rgb(247, 155, 35);
+const SELECTED_BOOL:    Color = Color::Rgb(94, 94, 94);
 
 pub fn draw_ui(f: &mut Frame, app: &App) {
     // Will need them at following
     let inputs = &app.form.inputs;
-    let selected_input = app.form.selected_input;
 
     match app.selected_screen {
         states::Screen::Main => {
@@ -102,7 +99,7 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                     }
                 ));
 
-            let main_txt = inputs[selected_input].borrow();
+            let main_txt = inputs[app.form.selected_input].borrow();
             // What to show on typing box
             let showing_text = match app.mode {
                 states::Modes::Normal => {
@@ -133,7 +130,10 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
             }
 
         },
-        states::Screen::UserForm => {
+        states::Screen::FromChoose => {
+
+        },
+        _ => {
 
             // To draw center layout ----------
             let vchunk = Layout::default()
@@ -156,11 +156,14 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
             let form_blk = Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(USER_FORM)
+                .border_style(FORM)
                 .title(Line::from(
                     match app.form.kind {
-                        states::Forms::SignUp => "Sign Up Form",
-                        _                     => "Sign In Form",
+                        states::Forms::SignUp      => "Sign Up",
+                        states::Forms::SignIn      => "Sign In",
+                        states::Forms::RoomCreator => "Room Creation",
+                        states::Forms::RoomEdit    => "Room Edit",
+                        _                          => "", // Not happening
                     }
                 ).centered());
             f.render_widget(form_blk, hchunk[0]);
@@ -176,12 +179,16 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
 
             // To draw inner layout ------------
             let titles: Vec<String> = match app.form.kind {
-                states::Forms::SignUp => vec![format!("Username:"),
-                                                format!(""), format!("Password:"),
-                                                format!(""), format!("Question:"),
-                                                format!(""), format!("Answer:")],
-                _                     => vec![format!("Username:"), format!(""),
-                                                format!("Password:")],
+                states::Forms::SignUp      => vec![format!("Username:"),
+                                              format!(""), format!("Password:"),
+                                              format!(""), format!("Question:"),
+                                              format!(""), format!("Answer:")],
+                states::Forms::SignIn      => vec![format!("Username:"), format!(""),
+                                              format!("Password:")],
+                states::Forms::RoomCreator |
+                states::Forms::RoomEdit    => vec![format!("Roomname:"), format!(""),
+                                                   format!("IsPublic:")],
+                _                          => vec![format!("")], // Not happening
             };
 
             let rows: Vec<Constraint> = vec![Constraint::Percentage(100 / titles.len() as u16); titles.len()];
@@ -189,10 +196,11 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                 .direction(Direction::Vertical)
                 .constraints(rows);
 
-            for (i, title) in titles.iter().enumerate() {
+            for (i, title) in titles.clone().iter().enumerate() {
                 if i % 2 == 0 {
                     let border: Borders;
-                    if i == app.form.selected_input * 2 {
+                    let is_selected = i == app.form.selected_input * 2;
+                    if is_selected {
                         border = Borders::ALL;
                         match app.mode {
                             states::Modes::Insert => {
@@ -207,15 +215,31 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                         border = Borders::NONE;
                     };
 
-                    let input_blk = Block::default()
+                    let row_block = Block::default()
                         .borders(border)
                         .border_type(BorderType::Rounded);
 
-                    let main_txt = inputs[i/2].borrow();
-                    let input_para = Paragraph::new(
-                        vec![Line::from(main_txt[app.line_index].as_str()).style(Style::new().fg(CHAT_FG))]
-                    )
-                    .block(input_blk.clone());
+                    if *title == format!("IsPublic:") {
+                        // This block decides how IsPublic input is gotten
+                        let stl: Style;
+                        if is_selected {
+                            stl = Style::new().bg(SELECTED_BOOL);
+                        } else {
+                            stl = Style::new();
+                        }
+
+                        let dyn_bool = Paragraph::new(
+                            vec![Line::from(Span::from(app.form.is_public.to_string())).style(stl.fg(CHAT_FG))]
+                        ).block(row_block.clone().borders(Borders::NONE));
+                        f.render_widget(dyn_bool, rows.clone().split(cols[1])[i]);
+                    } else {
+                        let main_txt = inputs[i/2].borrow();
+                        let input_para = Paragraph::new(
+                            vec![Line::from(main_txt[app.line_index].as_str()).style(Style::new().fg(CHAT_FG))]
+                        )
+                            .block(row_block.clone());
+                        f.render_widget(input_para, rows.clone().split(cols[1])[i]);
+                    }
 
                     let title_line = Paragraph::new(
                         vec![
@@ -223,15 +247,13 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                             Line::from(Span::from(title))]
                     )
                     .alignment(Alignment::Center)
-                    .block(input_blk.clone().borders(Borders::NONE));
+                    .block(row_block.clone().borders(Borders::NONE));
 
                     f.render_widget(title_line, rows.clone().split(cols[0])[i]);
-                    f.render_widget(input_para, rows.clone().split(cols[1])[i]);
                 }
             }
             // ---------------------------------
 
-        },
-        _ => {}
+        }
     }
 }

@@ -49,11 +49,11 @@ impl App {
                 formm = Form::new(None, None);
             },
             Err(_error) => {
-                screen = Screen::UserForm;
-                let form_kind = Forms::SignUp; // TODO: We should check if the user already exist or what
+                screen = Screen::Form;
+                let form_kind = Forms::RoomEdit; // TODO: We should check if the user already exist or what
                 let n_inputs = match form_kind {
                     // Create a form with different number of inputs with
-                    // respect to UserForm kind
+                    // respect to Form kind
                     Forms::SignUp => Some(4),
                     _             => Some(2), // We never hit rooms form here so its ok
                 };
@@ -244,18 +244,23 @@ impl App {
         if ends_with_slash {
             self.new_line();
         } else {
-            self.messages.push("User1:".to_string());
-            {
-                let mut borrowed = self.all_input.borrow_mut();
-                for (i, _) in borrowed.clone().iter().enumerate() {
-                    borrowed[i] = borrowed[i].replace("\\", "");
-                    self.messages.push(borrowed[i].to_string())
-                }
-                self.messages.push("".to_string());
-                *borrowed = vec!["".to_string()];
-            }
-            self.reset_cursor();
-            self.reset_line();
+            match self.selected_screen {
+                Screen::Main => {
+                    self.messages.push("User1:".to_string());
+                    {
+                        let mut borrowed = self.all_input.borrow_mut();
+                        for (i, _) in borrowed.clone().iter().enumerate() {
+                            borrowed[i] = borrowed[i].replace("\\", "");
+                            self.messages.push(borrowed[i].to_string())
+                        }
+                        self.messages.push("".to_string());
+                        *borrowed = vec!["".to_string()];
+                    }
+                    self.reset_cursor();
+                    self.reset_line();
+                },
+                _            => {},
+            };
         }
     }
 }
