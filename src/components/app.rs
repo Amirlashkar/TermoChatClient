@@ -1,4 +1,5 @@
 use crate::tui::core::draw_ui;
+use crate::server_talk::session::Session;
 use super::{
     forms::Form, logics, states::{
         Block, Forms, Modes, Screen
@@ -23,6 +24,7 @@ use std::{
 pub struct App {
     pub exit:             bool,
     pub form:             Form,
+    pub session:          Session,
     pub selected_block:   Block,
     pub selected_screen:  Screen,
     pub mode:             Modes,
@@ -40,17 +42,24 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        dotenv().ok();
+        let sess = Session::new();
         let screen:  Screen; // This kind of approach is needed for future token conditions
         let formm: Form; // If you know, you know
-        match std::env::var("TOKEN") {
-            Ok(_value) => {
-                screen = Screen::Main;
-                formm = Form::new(None, None);
+
+        match sess.token.clone() {
+            Some(_value) => {
+                let pong = sess.ping();
+                if pong.contains_key("ok") {
+                    screen = Screen::Main;
+                    formm  = Form::new(None, None);
+                } else {
+                    screen = Screen::Form;
+                    formm  = Form::new(Some(Forms::SignIn), Some(2));
+                }
             },
-            Err(_error) => {
+            None         => {
                 screen = Screen::Form;
-                let form_kind = Forms::RoomEdit; // TODO: We should check if the user already exist or what
+                let form_kind = Forms::SignUp; // TODO: We should check if the user already exist or what
                 let n_inputs = match form_kind {
                     // Create a form with different number of inputs with
                     // respect to Form kind
@@ -58,14 +67,15 @@ impl App {
                     _             => Some(2), // We never hit rooms form here so its ok
                 };
                 formm = Form::new(Some(form_kind), n_inputs);
-            }
-        };
+            },
+        }
 
         let inp = Rc::clone(&formm.inputs[0]);
 
         Self {
             exit:             false,
             form:             formm,
+            session:          sess,
             selected_block:   Block::Rooms,
             selected_screen:  screen,
             mode:             Modes::Normal,
@@ -258,6 +268,19 @@ impl App {
                     }
                     self.reset_cursor();
                     self.reset_line();
+                },
+                Screen::Form => {
+                    match self.form.kind {
+                        Forms::SignIn => {
+                            let show_name = &self.form.inputs[0].borrow().clone()[self.line_index];
+                            let password  = &self.form.inputs[1].borrow().clone()[self.line_index];
+
+                            self.session.login(show_name, password);
+                        },
+                        _             => {
+
+                        },
+                    };
                 },
                 _            => {},
             };
