@@ -26,9 +26,12 @@ use std::{
         BufReader,
     },
     collections::HashMap,
+    thread,
 };
 use dotenv::dotenv;
-
+use crossbeam_channel::{unbounded, Sender, Receiver};
+use tungstenite::{connect, Message, client::IntoClientRequest};
+use http::header::{HeaderMap, HeaderName, HeaderValue};
 
 pub struct Session {
     pub host:          String,
@@ -165,14 +168,14 @@ impl Session {
         }
     }
 
-    pub fn signup(&self, show_name: String, password: String,
-        related_question: String, related_answer: String) -> HashMap<&str, String>{
+    pub fn signup(&self, show_name: &str, password: &str,
+        related_question: &str, related_answer: &str) -> HashMap<&str, String>{
         let url = format!("{}/auth/signup", self.host);
         let form = json!({
-            "show_name":         show_name,
-            "password":          password,
-            "related_question":  related_question,
-            "related_answer":    related_answer,
+            "show_name":         show_name.to_string(),
+            "password":          password.to_string(),
+            "related_question":  related_question.to_string(),
+            "related_answer":    related_answer.to_string(),
         });
 
         let response = self.request(url, "post", None, Some(&form));
@@ -390,6 +393,7 @@ impl Session {
         let mut map = HashMap::new();
         if !self.check_stat(&response) {
             let err = self.resp_val(&response, "error");
+            println!("{}", err);
             map.insert("error", vec![format!("{err}")]);
             map
         } else {
@@ -398,9 +402,26 @@ impl Session {
             let hashes    = self.resp_val(&data, "hashes");
             let names     = self.val2vec(&names);
             let hashes    = self.val2vec(&hashes);
+            map.insert("ok", vec!["".to_string()]);
             map.insert("names", names);
             map.insert("hashes", hashes);
             map
         }
+    }
+
+    pub fn chat_connect(&mut self, room_hash: &str) {
+        let url = format!("{}/chat/manage", self.host).replace("http", "ws");
+        let mut request = url.into_client_request().unwrap();
+        let token = format!("Bearer {}", self.token.clone().unwrap().to_string());
+
+        // headers
+        request.headers_mut().insert(
+            "Authorization", HeaderValue::from_str(&token).unwrap()
+        );
+        request.headers_mut().insert(
+            "X-Room-Hash", HeaderValue::from_str(room_hash).unwrap()
+        );
+
+        let (socket, _) = connect(request).expect("Websocket connection failed!");
     }
 }

@@ -1,4 +1,5 @@
 mod components;
+mod server_talk;
 mod tui;
 
 use components::app::{
@@ -17,6 +18,7 @@ use std::{
     io,
     io::Result,
 };
+use server_talk::session::Session;
 
 
 fn main() -> Result<()>{

@@ -12,7 +12,6 @@ use ratatui::{
     Terminal,
 };
 use crossterm::event::{self, Event};
-use dotenv::dotenv;
 use std::{
     char,
     io::Result,
@@ -35,6 +34,8 @@ pub struct App {
     pub line_index:       usize,
 
     pub messages:         Vec<String>,
+    pub room_names:       Vec<String>,
+    pub room_hashes:      Vec<String>,
     pub is_user_msg:      bool,
     pub chat_scroll_state:ScrollbarState,
     pub chat_scroll_index:usize,
@@ -43,30 +44,32 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let sess = Session::new();
-        let screen:  Screen; // This kind of approach is needed for future token conditions
-        let formm: Form; // If you know, you know
+        let screen:      Screen; // This kind of approach is needed for future token conditions
+        let formm:       Form;   // If you know, you know
+        let mut rnames:  Vec<String> = vec!["".to_string()];
+        let mut rhashes: Vec<String> = vec!["".to_string()];
 
         match sess.token.clone() {
             Some(_value) => {
                 let pong = sess.ping();
                 if pong.contains_key("ok") {
                     screen = Screen::Main;
-                    formm  = Form::new(None, None);
+                    formm  = Form::new(None, None, None);
+                    let rooms = sess.room_publist();
+                    if rooms.contains_key("ok") {
+                        rnames  = rooms.get("names").unwrap().to_vec();
+                        rhashes = rooms.get("hashes").unwrap().to_vec();
+                    }
                 } else {
                     screen = Screen::Form;
-                    formm  = Form::new(Some(Forms::SignIn), Some(2));
+                    formm  = Form::new(Some(Forms::SignIn), Some(2), None);
                 }
             },
+
             None         => {
-                screen = Screen::Form;
-                let form_kind = Forms::SignUp; // TODO: We should check if the user already exist or what
-                let n_inputs = match form_kind {
-                    // Create a form with different number of inputs with
-                    // respect to Form kind
-                    Forms::SignUp => Some(4),
-                    _             => Some(2), // We never hit rooms form here so its ok
-                };
-                formm = Form::new(Some(form_kind), n_inputs);
+                screen = Screen::FormChoose;
+                let opts = vec!["SignUp".to_string(), "LogIn".to_string()];
+                formm  = Form::new(None, None, Some(opts));
             },
         }
 
@@ -83,6 +86,8 @@ impl App {
             char_index:       0,
             line_index:       0,
             messages:         Vec::new(),
+            room_names:       rnames,
+            room_hashes:      rhashes,
             is_user_msg:      true,
             chat_scroll_state:ScrollbarState::new(0),
             chat_scroll_index:0,
@@ -93,9 +98,17 @@ impl App {
         self.all_input = Rc::clone(&self.form.inputs[self.form.selected_input]);
     }
 
+    // TODO: this function should work dynamicaly for all lists
+    // that are hoverable by user
     pub fn form_field_hover(&mut self, go_next: bool) {
         let mut selected = self.form.selected_input;
-        let last = self.form.inputs.len() - 1;
+        let last: usize;
+        if self.form.options.len() != 1 {
+            last = self.form.options.len() - 1;
+        } else {
+            last = self.form.inputs.len() - 1;
+        }
+
         if go_next {
             if selected != last {
                 selected = selected.saturating_add(1);
@@ -110,6 +123,21 @@ impl App {
             }
         }
         self.form.selected_input = selected;
+    }
+
+    pub fn jump2form(&mut self) {
+        let selected_form = match self.form.options[self.form.selected_input].as_str() {
+            "SignUp" => Forms::SignUp,
+            _        => Forms::SignIn,
+        };
+
+        let n_inputs = match selected_form {
+            Forms::SignUp => 4,
+            _             => 2,
+        };
+
+        self.selected_screen = Screen::Form;
+        self.form = Form::new(Some(selected_form), Some(n_inputs), None);
     }
 
     pub fn move_cursor_left(&mut self) {
@@ -254,6 +282,7 @@ impl App {
         if ends_with_slash {
             self.new_line();
         } else {
+
             match self.selected_screen {
                 Screen::Main => {
                     self.messages.push("User1:".to_string());
@@ -269,21 +298,64 @@ impl App {
                     self.reset_cursor();
                     self.reset_line();
                 },
+
                 Screen::Form => {
                     match self.form.kind {
                         Forms::SignIn => {
                             let show_name = &self.form.inputs[0].borrow().clone()[self.line_index];
                             let password  = &self.form.inputs[1].borrow().clone()[self.line_index];
-
                             self.session.login(show_name, password);
                         },
-                        _             => {
-
-                        },
-                    };
+                        _ => {}
+                    }
                 },
-                _            => {},
-            };
+
+                _ => {},
+            }
+        }
+    }
+
+    pub fn submit_form(&mut self) {
+        match self.form.kind {
+            Forms::SignUp => {
+                let show_name        = &self.form.inputs[0].borrow_mut()[0].clone();
+                let password         = &self.form.inputs[1].borrow_mut()[0].clone();
+                let related_question = &self.form.inputs[2].borrow_mut()[0].clone();
+                let related_answer   = &self.form.inputs[3].borrow_mut()[0].clone();
+
+                let response = self.session.signup(show_name, password,
+                    related_question, related_answer);
+
+                if response.contains_key("ok") {
+                    self.selected_screen = Screen::FormChoose;
+                }
+
+                let response = self.session.room_publist();
+                if response.contains_key("ok") {
+                    self.room_names  = response.get("names").unwrap().to_vec();
+                    self.room_hashes = response.get("hashes").unwrap().to_vec();
+                }
+            },
+
+            Forms::SignIn => {
+                let show_name        = &self.form.inputs[0].borrow_mut()[0].clone();
+                let password         = &self.form.inputs[1].borrow_mut()[0].clone();
+
+                let response = self.session.login(show_name, password);
+
+                if response.contains_key("ok") {
+                    self.selected_screen = Screen::Main;
+                    *self.all_input.borrow_mut() = vec![String::new()];
+                }
+
+                let response = self.session.room_publist();
+                if response.contains_key("ok") {
+                    self.room_names  = response.get("names").unwrap().to_vec();
+                    self.room_hashes = response.get("hashes").unwrap().to_vec();
+                }
+            },
+
+            _ => {},
         }
     }
 }
@@ -294,7 +366,12 @@ pub fn run_app<B: Backend>(
     app: &mut App,
 ) -> Result<()> {
     while !app.exit {
-        app.update_input();
+        // Link form and input field
+        match app.selected_screen {
+            Screen::FormChoose => {},
+            _                  => {app.update_input();},
+        }
+
         terminal.draw(|frame| draw_ui(frame, app))?;
         if let Event::Key(key) = event::read()? {
             if key.kind == event::KeyEventKind::Release {continue}

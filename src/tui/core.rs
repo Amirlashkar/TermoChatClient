@@ -1,4 +1,4 @@
-use std::{fmt::format, u16};
+use std::u16;
 
 use crate::components::{
     app::App,
@@ -36,6 +36,15 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                 ])
                 .split(f.area());
 
+            let room_names: Vec<ListItem> = app.room_names
+                .iter()
+                .map(|m| {
+                    let content = Line::from(Span::raw(format!("{m}"))
+                        .style(Style::new().fg(CHAT_FG).bg(BORDER)));
+                    ListItem::new(content)
+                })
+                .collect();
+
             let rooms = Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
@@ -46,6 +55,8 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                     }
                 ))
                 .title(Line::from("Rooms").centered());
+
+            let rooms = List::new(room_names).block(rooms.clone());
             f.render_widget(rooms, chunks[0]);
 
             let chat_chunks = Layout::default()
@@ -69,8 +80,7 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
 
             let messages: Vec<ListItem> = app.messages
                 .iter()
-                .enumerate()
-                .map(|(_, m)| {
+                .map(|m| {
                     let content = Line::from(Span::raw(format!("{m}"))
                         .style(
                             match app.is_user_msg {
@@ -130,8 +140,66 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
             }
 
         },
-        states::Screen::FromChoose => {
+        states::Screen::FormChoose => {
 
+            // To draw center layout ----------
+            let vchunk = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(30),
+                ])
+                .flex(Flex::Center)
+                .split(f.area());
+
+            let hchunk = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(20),
+                ])
+                .flex(Flex::Center)
+                .split(vchunk[0]);
+            // ---------------------------------
+
+            let form_blk = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(FORM)
+                .title(Line::from("Choose Form").centered());
+            f.render_widget(form_blk, hchunk[0]);
+
+            let titles = app.form.options.clone();
+
+            let rows: Vec<Constraint> = vec![Constraint::Percentage(100 / titles.len() as u16); titles.len()];
+            let rows = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(rows)
+                .margin(1)
+                .split(hchunk[0]);
+
+            for (i, title) in titles.clone().iter().enumerate() {
+                let border: Borders;
+                let is_selected = app.form.selected_input == i;
+                if is_selected {
+                    border = Borders::ALL;
+                } else {
+                    border = Borders::NONE;
+                }
+
+                let row_block = Block::default()
+                    .borders(border)
+                    .border_type(BorderType::Rounded);
+
+                let title_line = Paragraph::new(
+                    vec![
+                        Line::from(Span::from("")), // To align title vertically
+                        Line::from(Span::from(title))
+                    ]
+                )
+                    .alignment(Alignment::Center)
+                    .block(row_block.clone());
+
+                f.render_widget(title_line, rows[i]);
+            }
         },
         _ => {
 
@@ -244,10 +312,11 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
                     let title_line = Paragraph::new(
                         vec![
                             Line::from(Span::from("")), // To align title vertically
-                            Line::from(Span::from(title))]
+                            Line::from(Span::from(title))
+                        ]
                     )
-                    .alignment(Alignment::Center)
-                    .block(row_block.clone().borders(Borders::NONE));
+                        .alignment(Alignment::Center)
+                        .block(row_block.clone().borders(Borders::NONE));
 
                     f.render_widget(title_line, rows.clone().split(cols[0])[i]);
                 }

@@ -2,7 +2,7 @@ use super::states::{Block, Modes, Screen, Forms};
 use super::app::App;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use std::{io, usize};
+use std::io;
 
 
 pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
@@ -41,44 +41,73 @@ pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
                                 app.mode = Modes::Insert;
                                 app.set_curser();
                             },
+                            Block::Rooms => {
+
+                            }
                             _ => {}
-                        }
+                        },
+
+                        KeyCode::Up => match app.selected_block {
+                            Block::Rooms => {
+                            },
+                            _ => {}
+                        },
+
+                        KeyCode::Down => match app.selected_block {
+                            Block::Rooms => {
+                            },
+                            _ => {}
+                        },
 
                         _ => {}
                     }
                 },
 
-                Screen::Form => match e.code {
+                Screen::Form | Screen::FormChoose => match e.code {
 
-                    KeyCode::Up => {
+                    KeyCode::Tab => {
                         app.form_field_hover(false);
                     },
 
-                    KeyCode::Down => {
+                    KeyCode::BackTab => {
                         app.form_field_hover(true);
                     },
 
                     KeyCode::Enter => {
-                        match app.form.kind {
-                            Forms::RoomCreator | Forms::RoomEdit => {
-                                let is_last = app.form.selected_input == app.form.inputs.len() - 1;
-                                if is_last {
-                                    app.form.switch_pub();
-                                } else {
+                        match app.selected_screen {
+                            Screen::Form => match app.form.kind {
+                                Forms::RoomCreator | Forms::RoomEdit => {
+                                    let is_last = app.form.selected_input == app.form.inputs.len() - 1;
+                                    if is_last {
+                                        app.form.switch_pub();
+                                    } else {
+                                        app.mode = Modes::Insert;
+                                        app.set_curser();
+                                    }
+                                },
+                                _ => {
                                     app.mode = Modes::Insert;
                                     app.set_curser();
-                                }
+                                },
                             },
-                            _ => {
-                                app.mode = Modes::Insert;
-                                app.set_curser();
+                            Screen::FormChoose => {
+                                app.jump2form();
                             },
+                            _ => {},
                         }
-                    }
+                    },
+
+                    KeyCode::Char(' ') => {
+                        match app.selected_screen {
+                            Screen::Form => {
+                                app.submit_form();
+                            },
+                            _ => {},
+                        }
+                    },
 
                     _ => {}
                 },
-                _ => {}
             }
         },
 

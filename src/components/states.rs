@@ -1,6 +1,6 @@
 pub enum Screen {
     Main,
-    FromChoose,
+    FormChoose,
     Form,
 }
 
