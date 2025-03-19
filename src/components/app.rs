@@ -11,12 +11,19 @@ use ratatui::{
     widgets::ScrollbarState,
     Terminal,
 };
+use crossbeam_channel::{
+    unbounded,
+    Receiver,
+    Sender,
+};
 use crossterm::event::{self, Event};
 use std::{
+    vec,
     char,
+    thread,
+    cell::RefCell,
     io::Result,
     rc::Rc,
-    cell::RefCell,
 };
 
 
@@ -32,8 +39,12 @@ pub struct App {
     pub all_input:        Rc<RefCell<Vec<String>>>,
     pub char_index:       usize,
     pub line_index:       usize,
+    pub room_index:       usize,
 
     pub messages:         Vec<String>,
+    pub to_ws:            Sender<String>,
+    pub from_ws:          Receiver<String>,
+    pub stop_to_ws:       Sender<bool>,
     pub room_names:       Vec<String>,
     pub room_hashes:      Vec<String>,
     pub is_user_msg:      bool,
@@ -43,12 +54,16 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let sess = Session::new();
+        let (tx_to_ws, rx_from_cli)         = unbounded::<String>(); // CLI -> WebSocket
+        let (tx_to_cli, rx_from_ws)         = unbounded::<String>(); // WebSocket -> CLI
+        let (stop_sender, stop_from_cli)    = unbounded::<bool>();   // Breaking channels
+
         let screen:      Screen; // This kind of approach is needed for future token conditions
         let formm:       Form;   // If you know, you know
         let mut rnames:  Vec<String> = vec!["".to_string()];
         let mut rhashes: Vec<String> = vec!["".to_string()];
 
+        let sess = Session::new(rx_from_cli, tx_to_cli, stop_from_cli);
         match sess.token.clone() {
             Some(_value) => {
                 let pong = sess.ping();
@@ -85,7 +100,11 @@ impl App {
             all_input:        inp,
             char_index:       0,
             line_index:       0,
+            room_index:       0,
             messages:         Vec::new(),
+            to_ws:            tx_to_ws,
+            from_ws:          rx_from_ws,
+            stop_to_ws:       stop_sender,
             room_names:       rnames,
             room_hashes:      rhashes,
             is_user_msg:      true,
@@ -96,33 +115,6 @@ impl App {
 
     pub fn update_input(&mut self) {
         self.all_input = Rc::clone(&self.form.inputs[self.form.selected_input]);
-    }
-
-    // TODO: this function should work dynamicaly for all lists
-    // that are hoverable by user
-    pub fn form_field_hover(&mut self, go_next: bool) {
-        let mut selected = self.form.selected_input;
-        let last: usize;
-        if self.form.options.len() != 1 {
-            last = self.form.options.len() - 1;
-        } else {
-            last = self.form.inputs.len() - 1;
-        }
-
-        if go_next {
-            if selected != last {
-                selected = selected.saturating_add(1);
-            } else {
-                selected = 0;
-            }
-        } else {
-            if selected != 0 {
-                selected = selected.saturating_sub(1);
-            } else {
-                selected = last;
-            }
-        }
-        self.form.selected_input = selected;
     }
 
     pub fn jump2form(&mut self) {
@@ -273,6 +265,45 @@ impl App {
         self.char_index = new_cursor_pos
     }
 
+    pub fn toggle_form_bool(&mut self) {
+        let is_last = self.form.selected_input == self.form.inputs.len() - 1;
+        if is_last {
+            self.form.switch_pub();
+        } else {
+            self.mode = Modes::Insert;
+            self.set_curser();
+        }
+    }
+
+    fn vec2str(&self, vec: Vec<String>) -> String {
+        let mut res = "".to_string();
+        for s in vec.clone().iter() {
+            res += s;
+        }
+        res
+    }
+
+    fn str2vec(&self, vec: String) -> Vec<String> {
+        let parts: Vec<String> = vec.split("\\")
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+        parts
+    }
+
+    fn add_msg(&mut self, msg: &mut Vec<String>) {
+        self.messages.push("User1:".to_string());
+        {
+            for (i, _) in msg.clone().iter().enumerate() {
+                msg[i] = msg[i].replace("\\", "");
+                self.messages.push(msg[i].to_string())
+            }
+            self.messages.push("".to_string());
+        }
+        self.reset_cursor();
+        self.reset_line();
+    }
+
     pub fn submit_message(&mut self) {
         let ends_with_slash = {
             let borrowed = self.all_input.borrow_mut();
@@ -285,18 +316,9 @@ impl App {
 
             match self.selected_screen {
                 Screen::Main => {
-                    self.messages.push("User1:".to_string());
-                    {
-                        let mut borrowed = self.all_input.borrow_mut();
-                        for (i, _) in borrowed.clone().iter().enumerate() {
-                            borrowed[i] = borrowed[i].replace("\\", "");
-                            self.messages.push(borrowed[i].to_string())
-                        }
-                        self.messages.push("".to_string());
-                        *borrowed = vec!["".to_string()];
-                    }
-                    self.reset_cursor();
-                    self.reset_line();
+                    let mut borrowed = self.all_input.borrow_mut().to_vec();
+                    self.add_msg(&mut borrowed);
+                    *self.all_input.borrow_mut() = vec!["".to_string()];
                 },
 
                 Screen::Form => {
@@ -346,19 +368,93 @@ impl App {
                 if response.contains_key("ok") {
                     self.selected_screen = Screen::Main;
                     *self.all_input.borrow_mut() = vec![String::new()];
+                    let response = self.session.room_publist();
+                    if response.contains_key("ok") {
+                        self.room_names  = response.get("names").unwrap().to_vec();
+                        self.room_hashes = response.get("hashes").unwrap().to_vec();
+                    }
                 }
+            },
 
-                let response = self.session.room_publist();
+            Forms::RoomCreator => {
+                let name      = &self.form.inputs[0].borrow_mut()[0].clone();
+                let is_public = &self.form.inputs[1].borrow_mut()[0].clone();
+
+                let response  = self.session.room_build(name, is_public);
+
                 if response.contains_key("ok") {
-                    self.room_names  = response.get("names").unwrap().to_vec();
-                    self.room_hashes = response.get("hashes").unwrap().to_vec();
+                    self.selected_screen = Screen::Main;
+                    *self.all_input.borrow_mut() = vec![String::new()];
                 }
             },
 
             _ => {},
         }
     }
+
+    pub fn enter_room(&mut self) {
+        let ses = self.session.clone();
+        let room_hash = self.room_hashes[self.room_index].to_owned();
+        thread::spawn(move || {
+            if let Err(e) = ses.chat_connect(&room_hash) {
+                eprintln!("WebSocket thread error: {}", e);
+            }
+        });
+
+        // Shift cursor to typing box
+        self.selected_block = Block::Typing;
+        self.mode = Modes::Insert;
+        self.set_curser();
+    }
+
+    pub fn leave_room(&mut self) {
+        let _ = self.stop_to_ws.send(true);
+    }
+
+    pub fn send_message(&self) {
+        let msg = self.all_input.borrow();
+        let msg = self.vec2str(msg.to_vec());
+        let err = self.to_ws.send(msg); // Send to WebSocket thread
+        match err {
+            Ok(_val) => {}
+            Err(crossbeam_channel::SendError(er)) => {println!("ERROR: {}", er)}
+        }
+    }
+
+    pub fn receive_message(&mut self) {
+        let msg = self.from_ws.try_recv().ok(); // Non-blocking receive
+        match msg {
+            Some(text) => {
+                println!("{text}");
+                let mut msg = self.str2vec(text);
+                self.add_msg(&mut msg);
+            }
+            _ => {}
+        }
+    }
 }
+
+pub fn hover_over(last: usize, selected_index: &mut usize, go_next: bool) {
+    let mut selected = *selected_index;
+
+    if go_next {
+
+        if selected != last {
+            selected = selected.saturating_add(1);
+        } else {
+            selected = 0;
+        }
+    } else {
+        if selected != 0 {
+            selected = selected.saturating_sub(1);
+        } else {
+            selected = last;
+        }
+    }
+
+    *selected_index = selected;
+}
+
 
 // Not an struct method!
 pub fn run_app<B: Backend>(
@@ -369,6 +465,10 @@ pub fn run_app<B: Backend>(
         // Link form and input field
         match app.selected_screen {
             Screen::FormChoose => {},
+            Screen::Main       => {
+                app.update_input();
+                app.receive_message();
+            }
             _                  => {app.update_input();},
         }
 

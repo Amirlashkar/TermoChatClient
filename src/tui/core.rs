@@ -38,9 +38,16 @@ pub fn draw_ui(f: &mut Frame, app: &App) {
 
             let room_names: Vec<ListItem> = app.room_names
                 .iter()
-                .map(|m| {
+                .enumerate()
+                .map(|(i, m)| {
                     let content = Line::from(Span::raw(format!("{m}"))
-                        .style(Style::new().fg(CHAT_FG).bg(BORDER)));
+                        .style(
+                            if i == app.room_index {
+                                Style::new().fg(CHAT_FG).bg(BORDER)
+                            } else {
+                                Style::new()
+                            }
+                        ));
                     ListItem::new(content)
                 })
                 .collect();

@@ -1,5 +1,9 @@
+use super::forms::Form;
 use super::states::{Block, Modes, Screen, Forms};
-use super::app::App;
+use super::app::{
+    App,
+    hover_over,
+};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::io;
@@ -42,71 +46,76 @@ pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
                                 app.set_curser();
                             },
                             Block::Rooms => {
-
+                                app.enter_room();
                             }
-                            _ => {}
-                        },
-
-                        KeyCode::Up => match app.selected_block {
-                            Block::Rooms => {
-                            },
-                            _ => {}
-                        },
-
-                        KeyCode::Down => match app.selected_block {
-                            Block::Rooms => {
-                            },
                             _ => {}
                         },
 
                         _ => {}
                     }
+
+                    match app.selected_block {
+                        Block::Rooms => match e.code {
+                            KeyCode::Up        => {
+                                hover_over(app.room_names.len() - 1, &mut app.room_index, false);
+                            },
+                            KeyCode::Down      => {
+                                hover_over(app.room_names.len() - 1, &mut app.room_index, true);
+                            },
+                            KeyCode::Char('c') => {
+                                app.selected_screen = Screen::Form;
+                                app.form = Form::new(Some(Forms::RoomCreator), Some(2), None);
+                            },
+                            KeyCode::Char('e') => {
+                                app.selected_screen = Screen::Form;
+                                app.form = Form::new(Some(Forms::RoomEdit), Some(2), None);
+                            },
+                            _ => {}
+                        },
+                        _ => {},
+                    }
                 },
 
-                Screen::Form | Screen::FormChoose => match e.code {
-
+                Screen::Form => match e.code {
                     KeyCode::Tab => {
-                        app.form_field_hover(false);
+                        hover_over(app.form.inputs.len() - 1, &mut app.form.selected_input, false);
                     },
 
                     KeyCode::BackTab => {
-                        app.form_field_hover(true);
+                        hover_over(app.form.inputs.len() - 1, &mut app.form.selected_input, true);
                     },
 
-                    KeyCode::Enter => {
-                        match app.selected_screen {
-                            Screen::Form => match app.form.kind {
-                                Forms::RoomCreator | Forms::RoomEdit => {
-                                    let is_last = app.form.selected_input == app.form.inputs.len() - 1;
-                                    if is_last {
-                                        app.form.switch_pub();
-                                    } else {
-                                        app.mode = Modes::Insert;
-                                        app.set_curser();
-                                    }
-                                },
-                                _ => {
-                                    app.mode = Modes::Insert;
-                                    app.set_curser();
-                                },
-                            },
-                            Screen::FormChoose => {
-                                app.jump2form();
-                            },
-                            _ => {},
-                        }
+                    KeyCode::Enter => match app.form.kind {
+                        Forms::RoomCreator | Forms::RoomEdit => {
+                            app.toggle_form_bool();
+                        },
+                        _ => {
+                            app.mode = Modes::Insert;
+                            app.set_curser();
+                        },
                     },
 
                     KeyCode::Char(' ') => {
-                        match app.selected_screen {
-                            Screen::Form => {
-                                app.submit_form();
-                            },
-                            _ => {},
-                        }
+                        app.submit_form();
                     },
 
-                    _ => {}
+                    _ => {},
+                },
+
+                Screen::FormChoose => match e.code {
+                    KeyCode::Up => {
+                        hover_over(app.form.options.len() - 1, &mut app.form.selected_input, false);
+                    },
+
+                    KeyCode::Down => {
+                        hover_over(app.form.options.len() - 1, &mut app.form.selected_input, true);
+                    },
+
+                    KeyCode::Enter => {
+                        app.jump2form();
+                    },
+
+                    _ => {},
                 },
             }
         },
@@ -141,7 +150,10 @@ pub fn key_bindings(app: &mut App, e: KeyEvent) -> io::Result<()> {
                         KeyCode::Down            => app.go_bottom_line(),
                         KeyCode::Backspace       => app.delete_char(),
                         KeyCode::Esc             => app.mode = Modes::Normal,
-                        KeyCode::Enter           => app.submit_message(),
+                        KeyCode::Enter           => {
+                            app.send_message();
+                            app.submit_message();
+                        },
                         _ => {}
                     }
                 }
